@@ -35,19 +35,6 @@ Cliquez sur les liens pour accéder à la documentation détaillée de chaque mo
 
 Pour intégrer un module dans votre projet, vous devez inclure sa dépendance `-starter` dans votre `pom.xml`.
 
-⚠️ Propriétés du Compilateur Obligatoires
-
-Puisque toute la suite Guildmaster est compilée et exécutée en Java 21, il est impératif de définir la version de Java dans le bloc <properties> de votre projet de consommation pour garantir la compatibilité et éviter l'erreur UnsupportedClassVersionError :
-
-```XML
-<properties>
-    <java.version>21</java.version>
-    
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-</properties>
-```
-
 ### Exemple : Intégration de Sentinel (Sécurité)
 
 ```XML

@@ -1,0 +1,32 @@
+spring:
+  main:
+    banner-mode: 'off'
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: admin-test
+    password: ''
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      ddl-auto: create-drop
+
+logging:
+  level:
+    root: ERROR
+    org.springframework.boot: ERROR
+    org.springframework.boot.context.config: WARN
+    org.springframework.core: ERROR
+    org.springframework.beans: ERROR
+    org.springframework.data.jpa: ERROR
+    org.springframework.security: ERROR 
+    org.springframework.jdbc: ERROR
+    org.springframework.jdbc.core: WARN
+    org.springframework.orm.jpa: WARN
+    org.hibernate: ERROR
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicExtractor: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    
+    services.auth: INFO 

@@ -8,14 +8,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import model.dto.ErrorResponse;
+import model.records.ErrorResponse;
 
 @ControllerAdvice
 public class AuthExceptionHandler {
 	
 	@ExceptionHandler(AuthException.class)
     public ResponseEntity<Object> handleResponseStatus(AuthException ex, HttpServletRequest request, HttpServletResponse response) {
-        ErrorResponse error = new ErrorResponse(ex.getError());
+        ErrorResponse error = new ErrorResponse(ex.getError().getCode(), ex.getError().getDescription(), ex.getError().getMessage());
 		return ResponseEntity.status(ex.getHttpStatus()).contentType(MediaType.APPLICATION_JSON).body(error);
     }
 

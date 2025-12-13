@@ -15,15 +15,15 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import model.entities.BaseAccount;
 import model.entities.BaseSecurityToken;
-import repositories.BaseSecurityTokenRepository;
+import model.entities.account.BaseAccount;
+import repositories.SecurityTokenRepository;
 
 @Component
 @RequiredArgsConstructor
 public class BearerTokenFilter extends OncePerRequestFilter {
 
-	private final BaseSecurityTokenRepository tokenRepository;
+	private final SecurityTokenRepository tokenRepository;
 	
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {

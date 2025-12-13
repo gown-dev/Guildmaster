@@ -1,12 +1,11 @@
 package services;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -20,29 +19,29 @@ import config.SecurityProperties;
 import exceptions.AuthException;
 import exceptions.BaseAuthError;
 import lombok.RequiredArgsConstructor;
-import model.entities.BaseAccount;
 import model.entities.BaseSecurityToken;
-import model.entities.Role;
-import repositories.BaseAccountRepository;
-import repositories.BaseSecurityTokenRepository;
+import model.entities.account.BaseAccount;
+import model.records.AccountRequest;
+import model.records.RefreshRequest;
+import repositories.SecurityTokenRepository;
+import repositories.account.AccountRepository;
 
 @Service
 @RequiredArgsConstructor
-public class BaseAuthService implements AuthService {
-	
+public abstract class BaseAuthService implements AuthService {
+
 	protected final SecurityProperties securityProperties;
-	protected final BaseAccountRepository accountRepository;
-	protected final BaseSecurityTokenRepository tokenRepository;
+	protected final AccountRepository accountRepository;
+	protected final SecurityTokenRepository tokenRepository;
 	protected final PasswordEncoder passwordEncoder;
 	
 	@Logged("Authentication")
 	@Transactional
-	public BaseSecurityToken authenticate(String username, String password) {
-		BaseAccount account = accountRepository.findByUsername(username).orElseThrow(() -> {
-			return new AuthException(BaseAuthError.INVALID_CREDENTIALS, HttpStatus.FORBIDDEN);
-		});
+	public BaseSecurityToken authenticate(AccountRequest request) throws AuthException {
+		verifyLoginRequest(request);
+		BaseAccount account = findAccount(request);
 		
-		if (!passwordEncoder.matches(password, account.getPassword())) {
+		if (!passwordEncoder.matches(request.password(), account.getPassword())) {
 			throw new AuthException(BaseAuthError.INVALID_CREDENTIALS, HttpStatus.FORBIDDEN);
 		}
 		
@@ -65,85 +64,49 @@ public class BaseAuthService implements AuthService {
 		return result;
 	}
 	
-	private void destroyToken(BaseSecurityToken token) {
-		tokenRepository.delete(token);
-	}
-	
 	@Logged("Registration")
 	@Transactional
-	public BaseSecurityToken register(String username, String password) {
-		if (securityProperties.getAuth().isUsernameRestricted()) {
-			if (!Pattern.matches(securityProperties.getAuth().getUsernameRegexp(), username)) {
+	public BaseSecurityToken register(AccountRequest request) throws AuthException {
+		if (StringUtils.isBlank(request.username())) {
+			throw new AuthException(BaseAuthError.MISSING_USERNAME, HttpStatus.BAD_REQUEST);
+		}
+
+		if (StringUtils.isBlank(request.password())) {
+			throw new AuthException(BaseAuthError.MISSING_PASSWORD, HttpStatus.BAD_REQUEST);
+		}
+		
+		if (!StringUtils.isBlank(securityProperties.getAuth().getUsernameRestriction())) {
+			if (!Pattern.matches(securityProperties.getAuth().getUsernameRestriction(), request.username())) {
 				throw new AuthException(BaseAuthError.USERNAME_UNSUITABLE, HttpStatus.BAD_REQUEST);
 			}
 		}
 		
-		if (securityProperties.getAuth().isPasswordRestricted()) {
-			if (!Pattern.matches(securityProperties.getAuth().getPasswordRegexp(), password)) {
+		if (!StringUtils.isBlank(securityProperties.getAuth().getPasswordRestriction())) {
+			if (!Pattern.matches(securityProperties.getAuth().getPasswordRestriction(), request.password())) {
 				throw new AuthException(BaseAuthError.PASSWORD_UNSUITABLE, HttpStatus.BAD_REQUEST);
 			}
 		}
+		
+		Optional<BaseAuthError> accountAlreadyExists = checkAccount(request);
 				
-		if (accountRepository.existsByUsername(username)) {
-			throw new AuthException(BaseAuthError.USERNAME_TAKEN, HttpStatus.FORBIDDEN);
+		if (accountAlreadyExists.isPresent()) {
+			throw new AuthException(accountAlreadyExists.get(), HttpStatus.FORBIDDEN);
 		}
 		
-		final BaseAccount account = registerAccount(username, password);
+		final BaseAccount account = registerAccount(request);
 		final BaseSecurityToken token = generateNewToken(account);
 		
 		return token;
 	}
 	
-	public BaseAccount registerAccount(String username, String password) {
-		BaseAccount account = createAccount(username, password);
-		accountRepository.save(account);
-		
-		return account;
-	}
-	
-	protected BaseAccount createAccount(String username, String password) {
-		return BaseAccount.builder()
-				.username(username)
-				.password(passwordEncoder.encode(password))
-				.authorities(Arrays.asList(securityProperties.getAuth().getDefaultRoles())
-						.stream()
-						.map(Role::new)
-						.collect(Collectors.toList()))
-				.build();
-	}
-	
-	private BaseSecurityToken generateNewToken(BaseAccount account) {
-		BaseSecurityToken token = createToken(account);
-		token = generateAccessToken(token);
-		token = generateRefreshToken(token);
-		
-		tokenRepository.save(token);
-		
-		return token;
-	}
-	
-	protected BaseSecurityToken createToken(BaseAccount account) {
-		return BaseSecurityToken.builder()
-				.account(account)
-				.build();
-	}
-	
-	private BaseSecurityToken generateAccessToken(BaseSecurityToken token) {
-		token.setAccessToken(UUID.randomUUID());
-		token.setAccessExpirationTime(LocalDateTime.now().plusHours(1));
-		return token;
-	}
-	
-	private BaseSecurityToken generateRefreshToken(BaseSecurityToken token) {
-		token.setRefreshToken(UUID.randomUUID());
-		token.setRefreshExpirationTime(LocalDateTime.now().plusHours(72));
-		return token;
-	}
-	
 	@Logged("Refresh Token")
 	@Transactional
-	public BaseSecurityToken refresh(UUID refreshToken) {
-		Optional<BaseSecurityToken> token = tokenRepository.findByRefreshToken(refreshToken);
+	public BaseSecurityToken refresh(RefreshRequest request) throws AuthException {
+		if (request.refreshToken() == null) {
+			throw new AuthException(BaseAuthError.MISSING_REFRESH_TOKEN, HttpStatus.FORBIDDEN);
+		}
+		
+		Optional<BaseSecurityToken> token = tokenRepository.findByRefreshToken(request.refreshToken());
 		
 		BaseSecurityToken result = token.orElseThrow(() -> {
 			throw new AuthException(BaseAuthError.MISSING_REFRESH_TOKEN, HttpStatus.FORBIDDEN);
@@ -170,6 +133,44 @@ public class BaseAuthService implements AuthService {
 		} catch (ClassCastException exception) {
 			throw new AuthException(BaseAuthError.MALFORMED_AUTH, HttpStatus.INTERNAL_SERVER_ERROR);
 		}
+	}
+	
+	protected abstract Optional<BaseAuthError> checkAccount(AccountRequest request);
+	protected abstract BaseAccount registerAccount(AccountRequest request);
+	protected abstract BaseAccount createAccount(AccountRequest request);
+	protected abstract void verifyLoginRequest(AccountRequest request);
+	protected abstract BaseAccount findAccount(AccountRequest request);
+	
+	protected BaseSecurityToken createToken(BaseAccount account) {
+		return BaseSecurityToken.builder()
+				.account(account)
+				.build();
+	}
+	
+	private BaseSecurityToken generateNewToken(BaseAccount account) {
+		BaseSecurityToken token = createToken(account);
+		token = generateAccessToken(token);
+		token = generateRefreshToken(token);
+		
+		tokenRepository.save(token);
+		
+		return token;
+	}
+	
+	private BaseSecurityToken generateAccessToken(BaseSecurityToken token) {
+		token.setAccessToken(UUID.randomUUID());
+		token.setAccessExpirationTime(LocalDateTime.now().plusHours(1));
+		return token;
+	}
+	
+	private BaseSecurityToken generateRefreshToken(BaseSecurityToken token) {
+		token.setRefreshToken(UUID.randomUUID());
+		token.setRefreshExpirationTime(LocalDateTime.now().plusHours(72));
+		return token;
+	}
+	
+	private void destroyToken(BaseSecurityToken token) {
+		tokenRepository.delete(token);
 	}
 	
 }
